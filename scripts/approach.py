@@ -3,24 +3,29 @@ import pandas as pd
 
 
 class SimwellScheduler:
-    def __init__(self, start_date, rotations, setup_time=12):
+    def __init__(self,df_orders, start_date, rotations):
+        self.df_initial = df_orders
         self.current_time = start_date
         self.rotations = rotations
-        self.setup_time = setup_time
+        self.setup_time = 12
         self.last_family = None
         self.last_maintenance_date = start_date
+        self.all_orders = df_orders.to_dict('records')
         self.schedule = []
         
-        # Initialisation des compteurs pour le rapport final
+        ## Initialisation des compteurs
+        # Au lieu de commencer à 00h00, on commence à 12h00 pour simuler le setup de démarrage
+        self.current_time = start_date + timedelta(hours=12)
         self.total_setup_hours = 0
+        self.total_setup_hours += 12
+        
         self.total_delay_days = 0
         self.total_idle_hours = 0
         self.maintenance_count = 0
     
     def solution(self):
         """
-        Transforme la liste des résultats en DataFrame Pandas 
-        et calcule les KPIs finaux.
+        Transforme la liste des résultats en DataFrame Pandas et calcule les metrics finaux.
         """
         if not self.schedule:
             return pd.DataFrame()
@@ -30,17 +35,33 @@ class SimwellScheduler:
     def metrics(self):
         nb_commandes = len(self.schedule)
         retard_moyen = round(self.total_delay_days / nb_commandes, 2) if nb_commandes > 0 else 0
-        
+        borne_inf_heures = self.calculate_lower_bound()
         return {
-            "Date de fin totale": self.current_time,
+            "Date de fin totale (j)": self.current_time,
+            "Date de fin minimale (j)": borne_inf_heures,
             "Nombre de commandes traitées": nb_commandes,
-            "Retard total (jours)": round(self.total_delay_days, 2),
-            "Retard Moyenne par commande (jours)": retard_moyen,
+            "Retard total (j)": round(self.total_delay_days, 2),
+            "Retard Moyenne par commande (j)": retard_moyen,
             "Temps de setup total (h)": self.total_setup_hours,
             "Nombre de setups effectués": self.total_setup_hours // self.setup_time,
             "Nombre de maintenances": self.maintenance_count
         }
-
+    
+    def calculate_lower_bound(self):
+        df = self.df_initial
+        # LB = Date de début + Somme(Temps de production) + Nbr Setups minimums (9 famille = 9 setups et temps de setup min 9 * 12h = 108h)
+        # 1. Somme pure de la production
+        total_processing_time_hours = sum((df['QTY'] / df['Average per Day']) * 24)
+        
+        # 2. Minimum de setups (un par famille présente dans les données)
+        num_families = df['Family'].nunique()
+        min_setup_hours = num_families * self.setup_time
+        
+        # 3. Borne inférieure Cmax (en heures depuis le début)
+        lb_hours = total_processing_time_hours + min_setup_hours
+        return lb_hours
+    
+    # Approche de resolution    
     def process_scheduling(self, orders_df):
         """Boucle principale d'ordonnancement."""
         # On travaille sur une copie pour ne pas modifier l'original

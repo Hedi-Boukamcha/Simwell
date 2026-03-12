@@ -8,7 +8,7 @@ from scripts.approach import SimwellScheduler
 def main():
     # 1. Configuration des paramètres
     data_path = "data/Données_Ordonnancement_2026.xlsx"
-    start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h
+    start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h (2026, 1, 6, 0, 0)
 
     print("--- Chargement des données ---")
     df_orders, rotations_excel = load_simwell_data(data_path)
@@ -22,7 +22,7 @@ def main():
         return
     
     # 2. Initialisation du moteur d'ordonnancement
-    scheduler = SimwellScheduler(start_date, ROTATION)
+    scheduler = SimwellScheduler(df_orders, start_date, ROTATION)
 
     print("--- Lancement de l'ordonnancement (Logique EDD + Rotation) ---")
     metrics = scheduler.process_scheduling(df_orders)
@@ -42,8 +42,8 @@ def main():
     print(f"--- Metrics sauvegardées : {metrics_path} ---")
 
     print("\n--- RÉSULTATS DU TP ---")
-    print(f"Date de fin totale           : {metrics['Date de fin totale']}")
-    print(f"Retard total (jours)         : {metrics['Retard total (jours)']} jours")
+    print(f"Date de fin totale (j)        : {metrics['Date de fin totale (j)']}")
+    print(f"Retard total (j)         : {metrics['Retard total (j)']} jours")
     print(f"Temps de setup total (h)     : {metrics['Temps de setup total (h)']} h")
     print(f"Nombre de maintenances       : {metrics['Nombre de maintenances']}")
     print(f"Nombre de commandes traitées : {metrics['Nombre de commandes traitées']}")  
