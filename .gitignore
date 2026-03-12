@@ -1,0 +1,12 @@
+# Environnement virtuel
+simwell_env/
+venv/
+.env
+
+# Python (fichiers compilés)
+__pycache__/
+*.pyc
+
+# Système
+.DS_Store
+Thumbs.db
