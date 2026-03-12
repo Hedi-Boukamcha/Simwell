@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 import pandas as pd
 
+
 class SimwellScheduler:
-    def __init__(self, start_date, allowed_transitions):
+    def __init__(self, start_date, rotations, setup_time=12):
         self.current_time = start_date
-        self.allowed_transitions = allowed_transitions  # Dictionnaire des familles permises
+        self.rotations = rotations
+        self.setup_time = setup_time
         self.last_family = None
         self.last_maintenance_date = start_date
         self.schedule = []
@@ -12,6 +14,7 @@ class SimwellScheduler:
         # Initialisation des compteurs pour le rapport final
         self.total_setup_hours = 0
         self.total_delay_days = 0
+        self.total_idle_hours = 0
         self.maintenance_count = 0
     
     def solution(self):
@@ -25,15 +28,17 @@ class SimwellScheduler:
         return pd.DataFrame(self.schedule)
 
     def metrics(self):
-        """
-        Retourne un dictionnaire des indicateurs de performance (KPI).
-        """
+        nb_commandes = len(self.schedule)
+        retard_moyen = round(self.total_delay_days / nb_commandes, 2) if nb_commandes > 0 else 0
+        
         return {
             "Date de fin totale": self.current_time,
+            "Nombre de commandes traitées": nb_commandes,
             "Retard total (jours)": round(self.total_delay_days, 2),
+            "Retard Moyenne par commande (jours)": retard_moyen,
             "Temps de setup total (h)": self.total_setup_hours,
-            "Nombre de maintenances": self.maintenance_count,
-            "Nombre de commandes traitées": len(self.schedule)
+            "Nombre de setups effectués": self.total_setup_hours // self.setup_time,
+            "Nombre de maintenances": self.maintenance_count
         }
 
     def process_scheduling(self, orders_df):
@@ -61,44 +66,43 @@ class SimwellScheduler:
             # 4. Produire
             self._produce(order)
 
-        return self.get_summary_metrics()
+        return self.metrics()
 
     def _find_next_order(self, pending_orders):
-        """Cherche le meilleur job prêt ou attend le prochain événement."""
-        # Déterminer les familles autorisées (Contrainte Dure)
-        if self.last_family is None:
-            allowed = list(self.rotations.keys())
-        else:
-            allowed = self.rotations.get(self.last_family, [])
+        while True:
+            # 1. Déterminer les familles autorisées
+            if self.last_family is None:
+                allowed = list(self.rotations.keys())
+            else:
+                allowed = self.rotations.get(self.last_family, [])
 
-        # --- ÉTAPE 1 : Ce qui est prêt ET autorisé ---
-        ready_and_allowed = [o for o in pending_orders 
-                             if o['Family'] in allowed 
-                             and o['Order Confirmed Date'] <= self.current_time]
+            # 2. Filtrer : Autorisé ET Prêt
+            ready = [o for o in pending_orders if o['Family'] in allowed 
+                    and o['Order Confirmed Date'] <= self.current_time]
 
-        if ready_and_allowed:
-            # Tri par urgence (EDD)
-            ready_and_allowed.sort(key=lambda x: x['Expected Delivery Date'])
-            # Retourner l'index dans la liste originale
-            return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == ready_and_allowed[0]['Order ID'])
+            if ready:
+                # On trie par EDD (Date de livraison prévue)
+                ready.sort(key=lambda x: x['Expected Delivery Date'])
+                # On retourne l'index original dans pending_orders
+                target_id = ready[0]['Order ID']
+                return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
 
-        # --- ÉTAPE 2 : Mode IDLE (Attente réactive) ---
-        future_allowed = [o for o in pending_orders if o['Family'] in allowed]
-        
-        if not future_allowed:
-            # Si aucune commande future n'est possible dans ce cycle, 
-            # on doit chercher la toute prochaine commande n'importe où (fin de cycle forcée)
-            pending_orders.sort(key=lambda x: x['Order Confirmed Date'])
-            next_any = pending_orders[0]
-            self._advance_time(next_any['Order Confirmed Date'])
-            return self._find_next_order(pending_orders)
+            # 3. Si rien n'est prêt, on cherche la date de la PROCHAINE commande autorisée
+            future = [o for o in pending_orders if o['Family'] in allowed]
+            
+            if not future:
+                # Cas critique : aucune des commandes restantes n'est autorisée par la rotation !
+                # Pour éviter le blocage, on autorise exceptionnellement n'importe quelle famille
+                print(f"Warning: Blocage de rotation à {self.current_time}. Saut vers la commande la plus proche.")
+                next_event = min(o['Order Confirmed Date'] for o in pending_orders)
+                self._advance_time(next_event)
+                self.last_family = None # Reset de la contrainte pour débloquer
+                continue 
 
-        # On avance le temps au moment de la prochaine confirmation autorisée
-        next_wakeup = min(o['Order Confirmed Date'] for o in future_allowed)
-        self._advance_time(next_wakeup)
-        
-        # On relance la recherche à la nouvelle heure (Ré-évaluation EDD)
-        return self._find_next_order(pending_orders)
+            # Avancer le temps au prochain événement possible
+            next_event = min(o['Order Confirmed Date'] for o in future)
+            self._advance_time(next_event)
+            # La boucle 'while True' va maintenant recommencer avec le nouveau self.current_time
 
     def _advance_time(self, new_date):
         """Avance le temps et comptabilise l'inactivité."""
@@ -124,7 +128,7 @@ class SimwellScheduler:
     def _produce(self, order):
         """Calcule la fin de production et le retard."""
         start_prod = self.current_time
-        duration_hours = (order['QTY'] / order['Average Per Day']) * 24
+        duration_hours = (order['QTY'] / order['Average per Day']) * 24
         
         self.current_time += timedelta(hours=duration_hours)
         end_prod = self.current_time
