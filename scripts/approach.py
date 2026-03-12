@@ -18,7 +18,7 @@ class SimwellScheduler:
         self.current_time = start_date + timedelta(hours=12)
         self.total_setup_hours = 0
         self.total_setup_hours += 12
-
+        
         self.total_delay_days = 0
         self.total_idle_hours = 0
         self.maintenance_count = 0
@@ -93,7 +93,7 @@ class SimwellScheduler:
         while True:
             # 1. Déterminer les familles autorisées
             if self.last_family is None:
-                allowed = list(self.rotations)
+                allowed = list(self.rotations.keys())
             else:
                 allowed = self.rotations.get(self.last_family, [])
 

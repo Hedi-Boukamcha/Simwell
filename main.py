@@ -1,69 +1,53 @@
 import pandas as pd
-import datetime
-import os
+from datetime import datetime
 
+from config import ROTATION
 from scripts.data_loader import load_simwell_data
 from scripts.approach import SimwellScheduler
 
 def main():
-    # --- 1. CONFIGURATION ---
+    # 1. Configuration des paramètres
     data_path = "data/Données_Ordonnancement_2026.xlsx"
-    start_date = datetime.datetime(2025, 1, 6, 0, 0)
-    
-    # La rotation cyclique simple telle que définie au début
-    ROTATION_LOGIC = {
-        'A': ['A', 'P'],
-        'P': ['P', 'H'],
-        'H': ['H', 'A'],
-        None: ['A', 'P', 'H']
-    }
-    
-    # Création du dossier de résultats si nécessaire
-    if not os.path.exists('results'):
-        os.makedirs('results')
+    start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h (2026, 1, 6, 0, 0)
 
-    print("="*50)
-    print("SYSTÈME D'ORDONNANCEMENT - VERSION HEURISTIQUE")
-    print("="*50)
-
-    # --- 2. CHARGEMENT DES DONNÉES ---
-    print("\n[1/3] Chargement des données Excel...")
-    df_orders, _ = load_simwell_data(data_path)
+    print("--- Chargement des données ---")
+    df_orders, rotations_excel = load_simwell_data(data_path)
     
     if df_orders is None or df_orders.empty:
-        print(" Erreur : Impossible de charger les données.")
+        print("Erreur : Impossible de charger les données.")
         return
-    print(f"  {len(df_orders)} commandes chargées.")
+    
+    if not rotations_excel:
+        print("Erreur critique : La matrice de rotation est vide ou mal chargée.")
+        return
+    
+    # 2. Initialisation du moteur d'ordonnancement
+    scheduler = SimwellScheduler(df_orders, start_date, ROTATION)
 
-    # --- 3. EXÉCUTION DE L'ALGORITHME ---
-    print("\n[2/3] Lancement de l'ordonnancement (Simwell)...")
-    start_time = datetime.time()
-    
-    # Initialisation du scheduler
-    scheduler = SimwellScheduler(df_orders.copy(), start_date, ROTATION_LOGIC)
-    
-    # Calcul du planning et des métriques
-    metrics = scheduler.process_scheduling(df_orders.copy())
-    
-    execution_time = datetime.time.time() - start_time
-    print(f"    Terminé en {execution_time:.2f} secondes.")
+    print("--- Lancement de l'ordonnancement (Logique EDD + Rotation) ---")
+    metrics = scheduler.process_scheduling(df_orders)
 
-    # --- 4. EXPORT ET RÉSULTATS ---
-    print("\n[3/3]  Génération des résultats...")
-    
-    # Récupération du DataFrame final ordonnancé
-    df_final = scheduler.solution()
-    df_final.to_csv("results/results_approach.csv", index=False, sep=';')
+    # 3. Récupération et sauvegarde des résultats
+    df_resultat = scheduler.solution()
+    # Export vers CSV
+    solution_path = "results/Ordonnancement.csv"
+    df_resultat.to_csv(solution_path, index=False)
+    print(f"--- Solution sauvegardée : {solution_path} ---")
 
-    # Affichage des métriques clés dans la console
-    print("\n" + "-"*30)
-    print(" PERFORMANCE DU PLANNING")
-    print("-"*30)
-    for key, value in metrics.items():
-        print(f"{key:.<25}: {value}")
-    print("-"*30)
-    
-    print(f"\n Fichier sauvegardé : results/results_approach.csv")
+    # 4. Récupération et sauvegarde des KPIs
+    stats = scheduler.metrics()
+    df_metrics = pd.DataFrame([stats])
+    metrics_path = "results/metrics.csv"
+    df_metrics.to_csv(metrics_path, index=False)
+    print(f"--- Metrics sauvegardées : {metrics_path} ---")
 
+    print("\n--- RÉSULTATS DU TP ---")
+    print(f"Date de fin totale (j)        : {metrics['Date de fin totale (j)']}")
+    print(f"Retard total (j)         : {metrics['Retard total (j)']} jours")
+    print(f"Temps de setup total (h)     : {metrics['Temps de setup total (h)']} h")
+    print(f"Nombre de maintenances       : {metrics['Nombre de maintenances']}")
+    print(f"Nombre de commandes traitées : {metrics['Nombre de commandes traitées']}")  
+
+# pyhton main.py
 if __name__ == "__main__":
     main()
