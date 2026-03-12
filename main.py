@@ -8,7 +8,7 @@ from scripts.approach import SimwellScheduler
 def main():
     # 1. Configuration des paramètres
     data_path = "data/Données_Ordonnancement_2026.xlsx"
-    start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h (2026, 1, 6, 0, 0)
+    start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h
 
     print("--- Chargement des données ---")
     df_orders, rotations_excel = load_simwell_data(data_path)
@@ -30,19 +30,19 @@ def main():
     # 3. Récupération et sauvegarde des résultats
     df_resultat = scheduler.solution()
     # Export vers CSV
-    solution_path = "results/Ordonnancement.csv"
+    solution_path = "results/results_approach.csv"
     df_resultat.to_csv(solution_path, index=False)
     print(f"--- Solution sauvegardée : {solution_path} ---")
 
     # 4. Récupération et sauvegarde des KPIs
     stats = scheduler.metrics()
     df_metrics = pd.DataFrame([stats])
-    metrics_path = "results/metrics.csv"
+    metrics_path = "results/metrics_approach.csv"
     df_metrics.to_csv(metrics_path, index=False)
     print(f"--- Metrics sauvegardées : {metrics_path} ---")
 
     print("\n--- RÉSULTATS DU TP ---")
-    print(f"Date de fin totale (j)        : {metrics['Date de fin totale (j)']}")
+    print(f"Date de fin totale           : {metrics['Date de fin totale (j)']}")
     print(f"Retard total (j)         : {metrics['Retard total (j)']} jours")
     print(f"Temps de setup total (h)     : {metrics['Temps de setup total (h)']} h")
     print(f"Nombre de maintenances       : {metrics['Nombre de maintenances']}")
