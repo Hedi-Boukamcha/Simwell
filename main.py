@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 from config import ROTATION
+from gantt import plot_courbes, plot_gantt
 from scripts.data_loader import load_simwell_data_exl
 from scripts.approach import SimwellScheduler
 from scripts.test import SimwellTest
@@ -59,11 +60,14 @@ def main():
         scheduler = SimwellTest(df_orders, start_date, ROTATION, strategy=strategy)
         metrics = scheduler.process_scheduling(df_orders)
         all_metrics[strategy] = metrics
+        plot_gantt(scheduler, strategy)  
+        plot_courbes(scheduler, strategy)      
 
         # Sauvegarde solution et métriques par stratégie
         df_resultat = scheduler.solution()
         df_resultat.to_csv(f"results/results_{strategy}.csv", index=False)
         print(f"Solution sauvegardée : results/results_{strategy}.csv")
+
 
     # 3. Sauvegarde comparative des métriques
     df_all_metrics = pd.DataFrame(all_metrics).T
@@ -95,6 +99,10 @@ def main():
     print(f"\nMeilleure stratégie (retard total) : {best.upper()}")
     print(f"  Retard : {all_metrics[best]['Retard total (j)']} jours")
     print(f"  Setups : {all_metrics[best]['Nombre de setups effectués']}")
+
+
+
+
 
 # pyhton main.py
 if __name__ == "__main__":

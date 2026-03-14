@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 import pandas as pd
+from collections import Counter
+
 
 
 class SimwellTest:
@@ -90,6 +92,8 @@ class SimwellTest:
             self.maintenance_count += 1
 
     def _produce(self, order):
+        #print(f"[PROD] Exécution ID {order['Order ID']} | Famille '{order['Family']}' | "
+          #f"QTY {order['QTY']} | Début : {self.current_time.strftime('%Y-%m-%d %H:%M')}")
         start_prod = self.current_time
         duration_hours = (order['QTY'] / order['Average per Day']) * 24
         self.current_time += timedelta(hours=duration_hours)
@@ -124,29 +128,8 @@ class SimwellTest:
                 continue
             self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])
 
-    '''def _find_next_order_composite(self, pending_orders):
-        while True:
-            allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
-            confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
-            ready = [o for o in confirmed if o['Family'] in allowed]
-
-            if ready:
-                def score(o):
-                    urgency = (o['Expected Delivery Date'] - self.current_time).total_seconds() / 3600
-                    setup_penalty = 0 if o['Family'] == self.last_family else 12
-                    return urgency + setup_penalty
-                ready.sort(key=score)
-                target_id = ready[0]['Order ID']
-                return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
-
-            future = [o for o in pending_orders if o['Family'] in allowed]
-            if not future:
-                self.last_family = None
-                continue
-            self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])'''
-
     def _find_next_order_batching(self, pending_orders):
-        from collections import Counter
+
         while True:
             allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
             confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
@@ -157,6 +140,11 @@ class SimwellTest:
                 if same_family:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
                     target_id = same_family[0]['Order ID']
+                    chosen = same_family[0]
+                    print(f"[BATCH] Continuation famille '{chosen['Family']}' "
+                      f"— ID {chosen['Order ID']} | "
+                      f"{len(same_family)} commande(s) restantes dans ce batch | "
+                      f"Setup évité")
                 else:
                     family_counts = Counter(o['Family'] for o in ready)
                     ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
@@ -169,41 +157,3 @@ class SimwellTest:
                 continue
             self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])
 
-    '''def _find_next_order_lookahead(self, pending_orders):
-        while True:
-            allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
-            confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
-            ready = [o for o in confirmed if o['Family'] in allowed]
-
-            if ready:
-                def simulate_cost(order):
-                    setup_h = 12 if (self.last_family and order['Family'] != self.last_family) else 0
-                    duration_h = (order['QTY'] / order['Average per Day']) * 24
-                    end_time_1 = self.current_time + timedelta(hours=setup_h + duration_h)
-                    delay_1 = max(0, (end_time_1 - order['Expected Delivery Date']).total_seconds() / 86400)
-
-                    next_allowed = self.rotations.get(order['Family'], [])
-                    remaining = [o for o in pending_orders if o['Order ID'] != order['Order ID']]
-                    next_ready = [o for o in remaining if o['Family'] in next_allowed and o['Order Confirmed Date'] <= end_time_1]
-
-                    delay_2 = 0
-                    if next_ready:
-                        best_next = min(next_ready, key=lambda x: x['Expected Delivery Date'])
-                        setup_h2 = 12 if best_next['Family'] != order['Family'] else 0
-                        duration_h2 = (best_next['QTY'] / best_next['Average per Day']) * 24
-                        end_time_2 = end_time_1 + timedelta(hours=setup_h2 + duration_h2)
-                        delay_2 = max(0, (end_time_2 - best_next['Expected Delivery Date']).total_seconds() / 86400)
-
-                    return delay_1 + delay_2
-
-                ready.sort(key=simulate_cost)
-                target_id = ready[0]['Order ID']
-                return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
-
-            future = [o for o in pending_orders if o['Family'] in allowed]
-            if not future:
-                self.last_family = None
-                continue
-            self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])'''
-
-    # ----------------------------------------------------------------
