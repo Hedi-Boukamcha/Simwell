@@ -4,6 +4,7 @@ from datetime import datetime
 from config import ROTATION
 from scripts.data_loader import load_simwell_data_exl
 from scripts.approach import SimwellScheduler
+from scripts.test import SimwellTest
 
 def main():
     # 1. Configuration des paramètres
@@ -22,11 +23,10 @@ def main():
         return
     
     # 2. Initialisation du moteur d'ordonnancement
-    scheduler = SimwellScheduler(df_orders, start_date, ROTATION)
+    #scheduler = SimwellScheduler(df_orders, start_date, ROTATION)
 
-    print("--- Lancement de l'ordonnancement (Logique EDD + Rotation) ---")
-    metrics1 = scheduler.process_scheduling(df_orders)
-
+    print("--- Lancement de l'ordonnancement ---")
+    '''metrics1 = scheduler.process_scheduling(df_orders)
 
     # 3. Récupération et sauvegarde des résultats
     df_resultat = scheduler.solution()
@@ -48,9 +48,53 @@ def main():
     print(f"Retard total (j)             : {metrics1['Retard total (j)']} jours")
     print(f"Temps de setup total (h)     : {metrics1['Temps de setup total (h)']} h")
     print(f"Nombre de maintenances       : {metrics1['Nombre de maintenances']}")
-    print(f"Nombre de commandes traitées : {metrics1['Nombre de commandes traitées']}")
+    print(f"Nombre de commandes traitées : {metrics1['Nombre de commandes traitées']}")'''
 
+        # 2. Lancement des 4 stratégies
+    strategies = ["edd", "batching"]
+    all_metrics = {}
+    
+    for strategy in strategies:
+        print(f"\n--- Lancement : {strategy.upper()} ---")
+        scheduler = SimwellTest(df_orders, start_date, ROTATION, strategy=strategy)
+        metrics = scheduler.process_scheduling(df_orders)
+        all_metrics[strategy] = metrics
 
+        # Sauvegarde solution et métriques par stratégie
+        df_resultat = scheduler.solution()
+        df_resultat.to_csv(f"results/results_{strategy}.csv", index=False)
+        print(f"Solution sauvegardée : results/results_{strategy}.csv")
+
+    # 3. Sauvegarde comparative des métriques
+    df_all_metrics = pd.DataFrame(all_metrics).T
+    df_all_metrics.to_csv("results/metrics_all.csv")
+    print("\nMétriques comparatives sauvegardées : results/metrics_all.csv")
+
+    # 4. Affichage comparatif
+    print("\n" + "="*65)
+    print(f"{'Métrique':<35} {'EDD':>6} {'BATCH':>6}")
+    print("="*65)
+    
+    kpis = [
+        ("Retard total (j)",             "Retard total (j)"),
+        ("Retard moyen/commande (j)",     "Retard Moyenne par commande (j)"),
+        ("Nb setups",                     "Nombre de setups effectués"),
+        ("Setup total (h)",               "Temps de setup total (h)"),
+        ("Nb maintenances",               "Nombre de maintenances"),
+        ("Nb commandes traitées",         "Nombre de commandes traitées"),
+    ]
+
+    for label, key in kpis:
+        vals = [all_metrics[s][key] for s in strategies]
+        print(f"{label:<35} {vals[0]:>6} {vals[1]:>6}")
+
+    print("="*65)
+
+    # Identifier la meilleure stratégie sur le retard total
+    best = min(all_metrics, key=lambda s: all_metrics[s]["Retard total (j)"])
+    print(f"\nMeilleure stratégie (retard total) : {best.upper()}")
+    print(f"  Retard : {all_metrics[best]['Retard total (j)']} jours")
+    print(f"  Setups : {all_metrics[best]['Nombre de setups effectués']}")
 
 # pyhton main.py
 if __name__ == "__main__":
