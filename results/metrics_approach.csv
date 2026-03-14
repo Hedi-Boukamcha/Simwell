@@ -1,2 +1,2 @@
-Date de fin totale (j),Date de fin minimale (j),Nombre de commandes traitées,Retard total (j),Retard Moyenne par commande (j),Temps de setup total (h),Nombre de setups effectués,Nombre de maintenances
-2025-10-26 05:29:00.648352,4961.377325933613,1002,9199.48,9.18,1812,151,3
+Date de fin totale (j),Nombre de commandes traitées,Retard total (j),Date de fin minimale (j),Nombre de setups effectués,Temps de setup total (h),Nombre de maintenances,Retard Moyenne par commande (j)
+2025-10-26 05:29:00.648352,1002,9199.48,4961.38,151,1812,3,9.18

@@ -9,6 +9,7 @@ class SimwellScheduler:
         self.rotations = rotations
         self.setup_time = 12
         self.last_family = None
+        self.last_order_id = None
         self.last_maintenance_date = start_date
         self.all_orders = df_orders.to_dict('records')
         self.schedule = []
@@ -38,13 +39,13 @@ class SimwellScheduler:
         borne_inf_heures = self.calculate_lower_bound()
         return {
             "Date de fin totale (j)": self.current_time,
-            "Date de fin minimale (j)": borne_inf_heures,
             "Nombre de commandes traitées": nb_commandes,
             "Retard total (j)": round(self.total_delay_days, 2),
-            "Retard Moyenne par commande (j)": retard_moyen,
-            "Temps de setup total (h)": self.total_setup_hours,
+            "Date de fin minimale (j)": round(borne_inf_heures, 2),
             "Nombre de setups effectués": self.total_setup_hours // self.setup_time,
-            "Nombre de maintenances": self.maintenance_count
+            "Temps de setup total (h)": self.total_setup_hours,
+            "Nombre de maintenances": self.maintenance_count,
+            "Retard Moyenne par commande (j)": retard_moyen
         }
     
     def calculate_lower_bound(self):
@@ -60,34 +61,6 @@ class SimwellScheduler:
         # 3. Borne inférieure Cmax (en heures depuis le début)
         lb_hours = total_processing_time_hours + min_setup_hours
         return lb_hours
-    
-    # Approche de resolution    
-    def process_scheduling(self, orders_df):
-        """Boucle principale d'ordonnancement."""
-        # On travaille sur une copie pour ne pas modifier l'original
-        pending_orders = orders_df.to_dict('records')
-        
-        while pending_orders:
-            # 1. Vérification de la maintenance (tous les 84 jours / 12 semaines)
-            self._check_maintenance()
-            
-            # 2. Trouver la prochaine commande (Logique de réveil incluse)
-            idx = self._find_next_order(pending_orders)
-            
-            if idx is None:
-                # Si vraiment plus rien n'est possible (cas théorique)
-                break
-                
-            # Extraire la commande
-            order = pending_orders.pop(idx)
-            
-            # 3. Appliquer le Setup de 12h si changement de famille
-            self._apply_setup(order['Family'])
-            
-            # 4. Produire
-            self._produce(order)
-
-        return self.metrics()
 
     def _find_next_order(self, pending_orders):
         while True:
@@ -97,34 +70,56 @@ class SimwellScheduler:
             else:
                 allowed = self.rotations.get(self.last_family, [])
 
-            # 2. Filtrer : Autorisé ET Prêt
-            ready = [o for o in pending_orders if o['Family'] in allowed 
-                    and o['Order Confirmed Date'] <= self.current_time]
+            #liste des commandes en attente
+            confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
+
+            # 2. Filtrer les commandes prêtes ET autorisées
+            ready = [o for o in confirmed if o['Family'] in allowed]
+
 
             if ready:
                 # On trie par EDD (Date de livraison prévue)
                 ready.sort(key=lambda x: x['Expected Delivery Date'])
                 # On retourne l'index original dans pending_orders
+                #chosen = ready[0]
+                #print(f"---[SÉLECTION] Commande ID: {chosen['Order ID']} ({chosen['Family']}) choisie.")
+                #print(f"(Raison : Autorisée par {self.last_family} et EDD la plus proche)")
                 target_id = ready[0]['Order ID']
                 return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
+
+            if confirmed:
+                print(f"\n ---[BLOCAGE ROTATION]")
+                print(f"   Dernière commande terminée : ID {self.last_order_id} (Famille: {self.last_family})")
+                print(f"Familles autorisées ensuite : {allowed}")
+                
+                # On affiche les familles qui attendent mais sont interdites
+                waiting_families = set(o['Family'] for o in confirmed)
+                print(f"Commandes en attente (INTERDITES) : {list(waiting_families)}")
+                
+                # Détail des premières commandes bloquées pour le debug
+                for o in confirmed:
+                    print(f"- ID: {o['Order ID']} (Famille: {o['Family']})")
+                print(" La machine reste à l'arrêt pour respecter la rotation...")
 
             # 3. Si rien n'est prêt, on cherche la date de la PROCHAINE commande autorisée
             future = [o for o in pending_orders if o['Family'] in allowed]
             
             if not future:
                 # Cas critique : aucune des commandes restantes n'est autorisée par la rotation !
-                # Pour éviter le blocage, on autorise exceptionnellement n'importe quelle famille
-                print(f"Warning: Blocage de rotation à {self.current_time}. Saut vers la commande la plus proche.")
-                next_event = min(o['Order Confirmed Date'] for o in pending_orders)
-                self._advance_time(next_event)
-                self.last_family = None # Reset de la contrainte pour débloquer
-                continue 
+                print(f"---[FIN DE ROTATION]: Plus aucune commande possible pour les familles {allowed} dans tout le fichier.")
+                self.last_family = None # On reset car c'est la fin de vie des commandes autorisées
+                continue
 
+            # On trouve la commande précise qui arrive le plus tôt
+            next_order = min(future, key=lambda x: x['Order Confirmed Date'])
+            next_event = next_order['Order Confirmed Date']
+            wait_duration = (next_event - self.current_time).total_seconds() / 3600
             # Avancer le temps au prochain événement possible
-            next_event = min(o['Order Confirmed Date'] for o in future)
+            print(f"---[ATTENTE] La machine s'arrête")
+            print(f"Prochain événement : Arrivée de l'ID {next_order['Order ID']} (Famille: {next_order['Family']}) prévue le {next_event}")            
             self._advance_time(next_event)
             # La boucle 'while True' va maintenant recommencer avec le nouveau self.current_time
-
+        
     def _advance_time(self, new_date):
         """Avance le temps et comptabilise l'inactivité."""
         if new_date > self.current_time:
@@ -157,7 +152,8 @@ class SimwellScheduler:
         # Calcul du retard en jours
         delay = max(0, (end_prod - order['Expected Delivery Date']).total_seconds() / 86400)
         self.total_delay_days += delay
-        
+        self.last_order_id = order['Order ID']
+
         self.schedule.append({
             'OrderID': order['Order ID'],
             'Family': order['Family'],
@@ -166,3 +162,33 @@ class SimwellScheduler:
             'Due_Date': order['Expected Delivery Date'],
             'Delay_Days': round(delay, 2)
         })
+
+    # Approche de resolution 1: EDD pur     
+    def process_scheduling(self, orders_df):
+        """Boucle principale d'ordonnancement."""
+        # On travaille sur une copie pour ne pas modifier l'original
+        pending_orders = orders_df.to_dict('records')
+        
+        while pending_orders:
+            # 1. Vérification de la maintenance (tous les 84 jours / 12 semaines)
+            self._check_maintenance()
+            
+            # 2. Trouver la prochaine commande (Logique de réveil incluse)
+            idx = self._find_next_order(pending_orders)
+            
+            if idx is None:
+                # Si vraiment plus rien n'est possible (cas théorique)
+                break
+                
+            # Extraire la commande
+            order = pending_orders.pop(idx)
+            
+            # 3. Appliquer le Setup de 12h si changement de famille
+            self._apply_setup(order['Family'])
+            
+            # 4. Produire
+            self._produce(order)
+
+        return self.metrics()
+
+ 

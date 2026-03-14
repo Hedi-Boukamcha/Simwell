@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 from config import ROTATION
-from scripts.data_loader import load_simwell_data
+from scripts.data_loader import load_simwell_data_exl
 from scripts.approach import SimwellScheduler
 
 def main():
@@ -11,7 +11,7 @@ def main():
     start_date = datetime(2025, 1, 6, 0, 0) # Lancement le 06 Janvier à 00h
 
     print("--- Chargement des données ---")
-    df_orders, rotations_excel = load_simwell_data(data_path)
+    df_orders, rotations_excel = load_simwell_data_exl(data_path)
     
     if df_orders is None or df_orders.empty:
         print("Erreur : Impossible de charger les données.")
@@ -25,7 +25,8 @@ def main():
     scheduler = SimwellScheduler(df_orders, start_date, ROTATION)
 
     print("--- Lancement de l'ordonnancement (Logique EDD + Rotation) ---")
-    metrics = scheduler.process_scheduling(df_orders)
+    metrics1 = scheduler.process_scheduling(df_orders)
+
 
     # 3. Récupération et sauvegarde des résultats
     df_resultat = scheduler.solution()
@@ -42,11 +43,14 @@ def main():
     print(f"--- Metrics sauvegardées : {metrics_path} ---")
 
     print("\n--- RÉSULTATS DU TP ---")
-    print(f"Date de fin totale           : {metrics['Date de fin totale (j)']}")
-    print(f"Retard total (j)         : {metrics['Retard total (j)']} jours")
-    print(f"Temps de setup total (h)     : {metrics['Temps de setup total (h)']} h")
-    print(f"Nombre de maintenances       : {metrics['Nombre de maintenances']}")
-    print(f"Nombre de commandes traitées : {metrics['Nombre de commandes traitées']}")  
+    print("\n--- App 1 ---")
+    print(f"Date de fin totale           : {metrics1['Date de fin totale (j)']}")
+    print(f"Retard total (j)             : {metrics1['Retard total (j)']} jours")
+    print(f"Temps de setup total (h)     : {metrics1['Temps de setup total (h)']} h")
+    print(f"Nombre de maintenances       : {metrics1['Nombre de maintenances']}")
+    print(f"Nombre de commandes traitées : {metrics1['Nombre de commandes traitées']}")
+
+
 
 # pyhton main.py
 if __name__ == "__main__":
