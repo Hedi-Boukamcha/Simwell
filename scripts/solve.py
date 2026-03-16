@@ -3,11 +3,9 @@ import pandas as pd
 from collections import Counter
 
 
-
-class SimwellTest:
+class SimwellScheduler:
     def __init__(self, df_orders, start_date, rotations, strategy="edd"):
         self.df_initial = df_orders
-        self.current_time = start_date
         self.rotations = rotations
         self.setup_time = 12
         self.last_family = None
@@ -22,13 +20,14 @@ class SimwellTest:
         self.total_delay_days = 0
         self.total_idle_hours = 0
         self.maintenance_count = 0
+        self.late_orders_count = 0
+        self.cmax = 0
+        self.gap = 0
 
-        # Sélection de la stratégie — DOIT être en dernier dans __init__
+        # Les approches
         strategies = {
-            "edd":       self._find_next_order_edd,
-            #"composite": self._find_next_order_composite,
-            "batching":  self._find_next_order_batching,
-            #"lookahead": self._find_next_order_lookahead,
+            "edd":       self.edd,
+            "batching":  self.batching_edd,
         }
         if strategy not in strategies:
             raise ValueError(f"Stratégie inconnue: {strategy}. Choisir parmi {list(strategies.keys())}")
@@ -41,37 +40,40 @@ class SimwellTest:
 
     def metrics(self):
         nb_commandes = len(self.schedule)
-        retard_moyen = round(self.total_delay_days / nb_commandes, 2) if nb_commandes > 0 else 0
-        borne_inf_heures = self.calculate_lower_bound()
+        retard_moyen = round(self.total_delay_days / self.late_orders_count, 2) if nb_commandes > 0 else 0
+        borne_inf_jours = self.calculate_lower_bound()
+        self.gap = round((self.cmax - borne_inf_jours) / borne_inf_jours * 100, 1) if borne_inf_jours > 0 else 0
         return {
             "Date de fin totale (j)": self.current_time,
             "Nombre de commandes traitées": nb_commandes,
             "Retard total (j)": round(self.total_delay_days, 2),
-            "Date de fin minimale (j)": round(borne_inf_heures, 2),
+            "Date de fin minimale (j)": round(borne_inf_jours, 2),
             "Nombre de setups effectués": self.total_setup_hours // self.setup_time,
             "Temps de setup total (h)": self.total_setup_hours,
             "Nombre de maintenances": self.maintenance_count,
-            "Retard Moyenne par commande (j)": retard_moyen
+            "Retard Moyenne par commande (j)": retard_moyen,
+            "Nb commandes en retard": self.late_orders_count,
+            "Cmax (j)": round(self.cmax, 2),
+            "GAP (%)": round(self.gap, 2),
         }
-
+    
     def calculate_lower_bound(self):
-        df = self.df_initial
-        total_processing_time_hours = sum((df['QTY'] / df['Average per Day']) * 24)
+        df = self.df_initial.copy()
+        
+        total_prod_hours = sum((df['QTY'] / df['Average per Day']) * 24)
         num_families = df['Family'].nunique()
-        min_setup_hours = num_families * self.setup_time
-        return total_processing_time_hours + min_setup_hours
+        min_setup_hours = (num_families - 1) * 12
+        
+        earliest_start = df['Order Confirmed Date'].min()
+        lb_end = earliest_start + timedelta(hours=total_prod_hours + min_setup_hours)
+        lb_cmax_days = (lb_end - earliest_start).total_seconds() / 86400
 
-    def process_scheduling(self, orders_df):
-        pending_orders = orders_df.to_dict('records')
-        while pending_orders:
-            self._check_maintenance()
-            idx = self._find_next_order(pending_orders)  # appel dynamique
-            if idx is None:
-                break
-            order = pending_orders.pop(idx)
-            self._apply_setup(order['Family'])
-            self._produce(order)
-        return self.metrics()
+        print(f"Temps total production   : {total_prod_hours/24:.1f} jours")
+        print(f"Nb familles              : {num_families}")
+        print(f"Setups minimaux          : {num_families-1} × 12h = {min_setup_hours/24:.1f} jours")
+        print(f"LB Cmax                  : {lb_cmax_days:.1f} jours")
+    
+        return round(lb_cmax_days, 2)
 
     def _advance_time(self, new_date):
         if new_date > self.current_time:
@@ -90,16 +92,30 @@ class SimwellTest:
             self.current_time += timedelta(hours=24)
             self.last_maintenance_date = self.current_time
             self.maintenance_count += 1
+    
+    def process_scheduling(self, orders_df):
+        pending_orders = orders_df.to_dict('records')
+        while pending_orders:
+            self._check_maintenance()
+            idx = self._find_next_order(pending_orders)  # appel dynamique
+            if idx is None:
+                break
+            order = pending_orders.pop(idx)
+            self._apply_setup(order['Family'])
+            self._produce(order)
+        return self.metrics()
 
     def _produce(self, order):
-        #print(f"[PROD] Exécution ID {order['Order ID']} | Famille '{order['Family']}' | "
-          #f"QTY {order['QTY']} | Début : {self.current_time.strftime('%Y-%m-%d %H:%M')}")
         start_prod = self.current_time
         duration_hours = (order['QTY'] / order['Average per Day']) * 24
         self.current_time += timedelta(hours=duration_hours)
         end_prod = self.current_time
         delay = max(0, (end_prod - order['Expected Delivery Date']).total_seconds() / 86400)
+        self.cmax = (self.current_time - datetime(2025, 1, 7, 0, 0)).total_seconds() / 86400
+        
         self.total_delay_days += delay
+        if delay > 0:
+            self.late_orders_count += 1
         self.last_order_id = order['Order ID']
         self.schedule.append({
             'OrderID': order['Order ID'],
@@ -110,8 +126,8 @@ class SimwellTest:
             'Delay_Days': round(delay, 2)
         })
     
-    # ----------------------------------------------------------------
-    def _find_next_order_edd(self, pending_orders):
+    # EDD
+    def edd(self, pending_orders):
         while True:
             allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
             confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
@@ -128,9 +144,12 @@ class SimwellTest:
                 continue
             self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])
 
-    def _find_next_order_batching(self, pending_orders):
-
+    # Batching + EDD
+    def batching_edd(self, pending_orders):
         while True:
+            if not pending_orders:
+                return None
+            
             allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
             confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
             ready = [o for o in confirmed if o['Family'] in allowed]
@@ -141,14 +160,15 @@ class SimwellTest:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
                     target_id = same_family[0]['Order ID']
                     chosen = same_family[0]
-                    print(f"[BATCH] Continuation famille '{chosen['Family']}' "
+                    '''print(f"[BATCH] Continuation famille '{chosen['Family']}' "
                       f"— ID {chosen['Order ID']} | "
                       f"{len(same_family)} commande(s) restantes dans ce batch | "
-                      f"Setup évité")
+                      f"Setup évité")'''
                 else:
                     family_counts = Counter(o['Family'] for o in ready)
                     ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
                     target_id = ready[0]['Order ID']
+                    chosen = ready[0]
                 return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
 
             future = [o for o in pending_orders if o['Family'] in allowed]

@@ -4,10 +4,7 @@ import openpyxl
 
 
 def load_simwell_data_exl(file_path):
-    """
-    Charge et fusionne les données du fichier Excel Simwell.
-    """
-        # data_only=True pour lire les valeurs des formules et non les formules
+
     wb = openpyxl.load_workbook(file_path, data_only=True)
 
     def wb_to_df(sheet_name, index_col=None):
@@ -23,7 +20,7 @@ def load_simwell_data_exl(file_path):
     df_prod_plan = wb_to_df('Production Plan')
     df_rotation = wb_to_df('Rotation', index_col='From/To')
 
-    # Conversion Order Confirmed Date
+    # Convertion de la date de confirmation des commandes 
     df_demand['Order Confirmed Date'] = pd.to_datetime(df_demand['Order Confirmed Date'])
 
     # Recalculer Expected Delivery Date si manquante (formule = +42 jours)
@@ -35,7 +32,7 @@ def load_simwell_data_exl(file_path):
     df_merged = pd.merge(df_demand, df_family, on='Product', how='left')
     df_merged = pd.merge(df_merged, df_prod_plan, on='Family', how='left')
 
-    # Conversion dates
+    # Convertion des dates
     df_merged['Order Confirmed Date'] = pd.to_datetime(df_merged['Order Confirmed Date'])
     df_merged['Expected Delivery Date'] = pd.to_datetime(df_merged['Expected Delivery Date'])
 

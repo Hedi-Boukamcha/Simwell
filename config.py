@@ -7,6 +7,7 @@ SETUP_TIME = 12
 MAINTENANCE_DURATION = 24
 MAINTENANCE_INTERVAL_DAYS = 84
 
+# Matrice de rotation
 ROTATION = {
 'A': ['A', 'P', 'H'],
 'P': ['P', 'A'],
