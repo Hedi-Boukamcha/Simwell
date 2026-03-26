@@ -15,7 +15,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
     - Sur chaque ligne, logique batching + EDD
     """
 
-    def __init__(self, df_orders, start_date, rotations):
+    def __init__(self, df_orders, start_date, rotations, alpha=0.5):
         # Initialise toutes les variables communes via le parent
         super().__init__(df_orders, start_date, rotations, strategy="edd")
 
@@ -30,7 +30,8 @@ class SimwellScheduler2Lines(SimwellScheduler):
         self.last_family_2           = None
         self.last_order_id_2         = None
         self.last_maintenance_date_2 = start_date
-        
+        self.alpha = alpha
+
         self.last_produced_family_1 = None
         self.last_produced_family_2 = None
 
@@ -142,8 +143,9 @@ class SimwellScheduler2Lines(SimwellScheduler):
     def _produce(self, order, line=1):
         current_time   = self.current_time_1 if line == 1 else self.current_time_2
         start_prod     = current_time
-        duration_hours = (order['QTY'] / order['Average per Day']) * 24
-        end_prod       = current_time + timedelta(hours=duration_hours)
+        processing_time_hour = (order['QTY'] / order['Average per Day']) * 24
+        duration_hours = processing_time_hour if line == 1 else processing_time_hour * self.alpha
+        end_prod       = current_time + timedelta(hours=processing_time_hour)
         delay          = max(0, (end_prod - order['Expected Delivery Date']).total_seconds() / 86400)
 
         if line == 1:
@@ -190,6 +192,16 @@ class SimwellScheduler2Lines(SimwellScheduler):
             ready     = [o for o in confirmed if o['Family'] in allowed]
 
             if ready:
+                    # Règle spéciale : après F, forcer une famille de {V,M,E,N,C}
+                VMENC = {'V', 'M', 'E', 'N', 'C'}
+                if last_family == 'F':
+                    vmenc_ready = [o for o in ready if o['Family'] in VMENC]
+                    if vmenc_ready:
+                        vmenc_ready.sort(key=lambda x: x['Expected Delivery Date'])
+                        target_id = vmenc_ready[0]['Order ID']
+                        return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
+                    # Si aucune VMENC prête → continuer avec logique normale ci-dessous
+
                 same_family = [o for o in ready if o['Family'] == last_family]
                 if same_family:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
