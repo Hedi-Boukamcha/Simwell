@@ -30,6 +30,9 @@ class SimwellScheduler2Lines(SimwellScheduler):
         self.last_family_2           = None
         self.last_order_id_2         = None
         self.last_maintenance_date_2 = start_date
+        
+        self.last_produced_family_1 = None
+        self.last_produced_family_2 = None
 
         # Setup initial compté pour les 2 lignes
         self.total_setup_hours = 24
@@ -55,21 +58,24 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 self.total_idle_hours += (new_date - self.current_time_2).total_seconds() / 3600
                 self.current_time_2 = new_date
 
+    # Dans _apply_setup
     def _apply_setup(self, line, new_family=None):
-        # Compatibilité avec l'appel parent _apply_setup(new_family)
-        if new_family is None:
-            new_family, line = line, 1
-
-        if line == 1:
-            if self.last_family_1 is not None and new_family != self.last_family_1:
+        last_produced = self.last_produced_family_1 if line == 1 else self.last_produced_family_2
+        
+        if last_produced is not None and new_family != last_produced:
+            if line == 1:
                 self.current_time_1 += timedelta(hours=12)
-                self.total_setup_hours += 12
-            self.last_family_1 = new_family
-        else:
-            if self.last_family_2 is not None and new_family != self.last_family_2:
+            else:
                 self.current_time_2 += timedelta(hours=12)
-                self.total_setup_hours += 12
+            self.total_setup_hours += 12
+
+        # Mettre à jour les deux variables
+        if line == 1:
+            self.last_family_1 = new_family
+            self.last_produced_family_1 = new_family
+        else:
             self.last_family_2 = new_family
+            self.last_produced_family_2 = new_family
 
     def _check_maintenance(self, line=1):
         if line == 1:
