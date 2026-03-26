@@ -2,6 +2,9 @@ from datetime import datetime, timedelta
 from collections import Counter
 from scripts.solve import SimwellScheduler
 
+TRANSIT_PATH = ['A', 'H', 'F']
+VMENC        = {'V', 'M', 'E', 'N', 'C'}
+URGENCY_THRESHOLD = 14
 
 class SimwellScheduler2Lines(SimwellScheduler):
     """
@@ -40,6 +43,81 @@ class SimwellScheduler2Lines(SimwellScheduler):
 
         # Redéfinir la stratégie sur la nouvelle méthode
         self._find_next_order = self.batching_2lines
+
+
+
+ #------------------------------------------------------------------
+    # Transit fixe : trouver la prochaine étape du chemin A→H→F
+    # ------------------------------------------------------------------
+ 
+    def _next_transit_step(self, last_family, pending_orders, current_time, line):
+        """
+        Retourne la prochaine famille cible selon le chemin fixe :
+        X → A → (P → A) → H → F → VMENC
+ 
+        Règles :
+        - Si on est sur A : vérifier P disponible → switcher vers P
+          Quitter A vers H seulement si P vide ET pas de A urgentes
+        - Si on est sur P : retourner vers A obligatoirement
+        - Si on est sur H : aller vers F
+        - Si on est sur F : aller vers VMENC (batch le plus grand + EDD)
+        - Sinon (V/M/E/N/C/autre) : aller vers A (début du chemin)
+        """
+        pending_families = {o['Family'] for o in pending_orders}
+ 
+        if last_family == 'A':
+            # Vérifier si P disponible/confirmé
+            p_orders = [o for o in pending_orders
+                        if o['Family'] == 'P' and o['Order Confirmed Date'] <= current_time]
+            if p_orders:
+                return 'P'
+ 
+            # Vérifier si des A urgentes restent
+            a_remaining = [o for o in pending_orders if o['Family'] == 'A']
+            urgent_a = [o for o in a_remaining
+                        if (o['Expected Delivery Date'] - current_time).days <= URGENCY_THRESHOLD]
+            if urgent_a:
+                return 'A'  # rester sur A pour finir les urgentes
+ 
+            # Plus de P ni de A urgentes → avancer vers H
+            if 'H' in pending_families:
+                return 'H'
+            return 'F' if 'F' in pending_families else self._any_available(pending_orders)
+ 
+        elif last_family == 'P':
+            # Après P → retour A obligatoire
+            if 'A' in pending_families:
+                return 'A'
+            return 'H' if 'H' in pending_families else 'F'
+ 
+        elif last_family == 'H':
+            return 'F' if 'F' in pending_families else self._any_available(pending_orders)
+ 
+        elif last_family == 'F':
+            # Après F → forcer VMENC (famille la plus représentée + EDD)
+            vmenc_orders = [o for o in pending_orders if o['Family'] in VMENC]
+            if vmenc_orders:
+                family_counts = Counter(o['Family'] for o in vmenc_orders)
+                best = max(family_counts, key=lambda f: (
+                    family_counts[f],
+                    -min(o['Expected Delivery Date'].timestamp()
+                         for o in vmenc_orders if o['Family'] == f)
+                ))
+                return best
+            return self._any_available(pending_orders)
+ 
+        else:
+            # Famille quelconque (V/M/E/N/C) → retour vers A
+            return 'A' if 'A' in pending_families else 'H'
+ 
+    def _any_available(self, pending_orders):
+        """Retourne n'importe quelle famille encore disponible (dernier recours)."""
+        families = {o['Family'] for o in pending_orders}
+        # Priorité : A > H > F > reste
+        for f in ['A', 'H', 'F']:
+            if f in families:
+                return f
+        return next(iter(families), None)
 
     # ------------------------------------------------------------------
     # Overrides des helpers pour prendre `line` en paramètre
@@ -192,45 +270,71 @@ class SimwellScheduler2Lines(SimwellScheduler):
             ready     = [o for o in confirmed if o['Family'] in allowed]
 
             if ready:
-                    # Règle spéciale : après F, forcer une famille de {V,M,E,N,C}
-                VMENC = {'V', 'M', 'E', 'N', 'C'}
+                # ── Règle 1 : après F → forcer VMENC (batch + EDD) ──
                 if last_family == 'F':
                     vmenc_ready = [o for o in ready if o['Family'] in VMENC]
                     if vmenc_ready:
-                        vmenc_ready.sort(key=lambda x: x['Expected Delivery Date'])
+                        family_counts = Counter(o['Family'] for o in vmenc_ready)
+                        vmenc_ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
                         target_id = vmenc_ready[0]['Order ID']
                         return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
-                    # Si aucune VMENC prête → continuer avec logique normale ci-dessous
+                    # Aucune VMENC confirmée → logique normale
+  
+                # ── Règle 2 : sur A → vérifier P urgent ──
+                if last_family == 'A':
+                    p_ready = [o for o in ready if o['Family'] == 'P']
+                    if p_ready:
+                        p_ready.sort(key=lambda x: x['Expected Delivery Date'])
+                        target_id = p_ready[0]['Order ID']
+                        return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
 
                 same_family = [o for o in ready if o['Family'] == last_family]
                 if same_family:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
                     target_id = same_family[0]['Order ID']
-                else:
-                    family_counts = Counter(o['Family'] for o in ready)
-                    ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
-                    target_id = ready[0]['Order ID']
+                    return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
 
+                family_counts = Counter(o['Family'] for o in ready)
+                ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
+                target_id = ready[0]['Order ID']
                 return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
 
             # Aucune commande prête → avancer jusqu'à la prochaine confirmation
             future = [o for o in pending_orders if o['Family'] in allowed]
             if not future:
+                # Chemin de transit fixe : trouver la prochaine étape
+                next_step = self._next_transit_step(last_family, pending_orders, current_time, line)
+                if next_step is None:
+                    return None  # plus rien à faire
                 if line == 1:
-                    self.last_family_1 = None
+                    self.last_family_1 = next_step
                 else:
-                    self.last_family_2 = None
-                last_family = None
+                    self.last_family_2 = next_step
+                last_family = next_step
+                # Attendre la prochaine confirmation de next_step
+                step_orders = [o for o in pending_orders if o['Family'] == next_step]
+                if step_orders:
+                    next_confirm = min(step_orders, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date']
+                    if next_confirm > current_time:
+                        self._advance_time(line, next_confirm)
+                        current_time = self.current_time_1 if line == 1 else self.current_time_2
                 continue
 
+            # Des commandes existent mais pas encore confirmées → avancer le temps
             next_confirm = min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date']
             if next_confirm <= current_time:
-                # Sécurité anti-boucle infinie
-                if line == 1:
-                    self.last_family_1 = None
+                # Sécurité anti-boucle : forcer le transit
+                next_step = self._next_transit_step(last_family, pending_orders, current_time, line)
+                if next_step and next_step != last_family:
+                    if line == 1:
+                        self.last_family_1 = next_step
+                    else:
+                        self.last_family_2 = next_step
+                    last_family = next_step
                 else:
-                    self.last_family_2 = None
-                last_family = None
+                    # Vraiment bloqué → idle jusqu'à next_confirm
+                    self._advance_time(line, next_confirm + timedelta(seconds=1))
+                    current_time = self.current_time_1 if line == 1 else self.current_time_2
                 continue
 
             self._advance_time(line, next_confirm)
