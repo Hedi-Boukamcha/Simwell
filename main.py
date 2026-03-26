@@ -5,6 +5,8 @@ from config import ROTATION
 from plots import plot_courbes, plot_gantt
 from scripts.data_loader import load_simwell_data_exl
 from scripts.solve import SimwellScheduler
+from scripts.batching_2lines import SimwellScheduler2Lines
+
 
 def main():
     # 1. Configuration des paramètres
@@ -22,12 +24,16 @@ def main():
     
     print("--- Lancement de l'ordonnancement ---")
     # Lancement des approches
-    strategies = ["edd", "batching"]
+    strategies = ["edd", "batching", "batching_2lines"]
     all_metrics = {}
     
     for strategy in strategies:
         print(f"\n--- Lancement : {strategy.upper()} ---")
-        scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
+        if strategy == "batching_2lines":
+            scheduler = SimwellScheduler2Lines(df_orders, start_date, ROTATION)
+        else:
+            scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
+        #scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
         metrics = scheduler.process_scheduling(df_orders)
         all_metrics[strategy] = metrics
         plot_gantt(scheduler, strategy)                     
@@ -45,24 +51,24 @@ def main():
 
     # Affichage comparatif dans le terminal
     print("\n" + "="*65)
-    print(f"{'Métrique':<35} {'EDD':>6} {'BATCH':>6}")
+    print(f"{'Métrique':<35} {'EDD':>6} {'BATCH':>6} {'BATCH_2lines':>6}")
     print("="*65)
     
     kpis = [
-        ("Retard total (j)",              "Retard total (j)"),
-        ("Retard moyen/commande (j)",     "Retard Moyenne par commande (j)"),
+        ("Retard total (j)",               "Retard total (j)"),
+        ("Retard moyen/commande (j)",      "Retard Moyenne par commande (j)"),
         ("Nb setups",                     "Nombre de setups effectués"),
-        ("Setup total (h)",               "Temps de setup total (h)"),
-        ("Nb maintenances",               "Nombre de maintenances"),
-        ("Nb commandes traitées",         "Nombre de commandes traitées"),
-        ("Nb commandes en retard",        "Nb commandes en retard"),
-        ("Cmax (j)",                      "Cmax (j)"),
-        ("GAP (%)",                      "GAP (%)")
+        ("Setup total (h)",                "Temps de setup total (h)"),
+        ("Nb maintenances",                "Nombre de maintenances"),
+        ("Nb commandes traitées",          "Nombre de commandes traitées"),
+        ("Nb commandes en retard",         "Nb commandes en retard"),
+        ("Cmax (j)",                       "Cmax (j)"),
+        ("GAP (%)",                       "GAP (%)")
     ]
 
     for label, key in kpis:
         vals = [all_metrics[s][key] for s in strategies]
-        print(f"{label:<35} {vals[0]:>6} {vals[1]:>6}")
+        print(f"{label:<35} {vals[0]:>8} {vals[1]:>8} {vals[2]:>8}")
 
     print("="*65)
 
