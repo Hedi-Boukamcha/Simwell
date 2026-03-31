@@ -1,4 +1,4 @@
 ,Date de fin totale (j),Nombre de commandes traitées,Retard total (j),Date de fin minimale (j),Nombre de setups effectués,Temps de setup total (h),Nombre de maintenances,Retard Moyenne par commande (j),Nb commandes en retard,Cmax (j),GAP (%)
 edd,2025-10-26 05:29:00.648352,1002,9199.48,206.22,151,1812,3,15.86,580,292.23,41.7
 batching,2025-10-08 09:56:28.432572,1002,8261.43,206.22,33,396,3,44.9,184,274.41,33.1
-batching_2lines,2025-09-28 13:08:47.699104,1002,1490.58,105.11,129,1548,6,17.74,84,264.55,151.7
+batching_2lines,2025-09-22 03:54:02.288221,1002,1651.24,105.11,132,1584,6,30.02,55,258.16,145.6

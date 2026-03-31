@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 from config import ROTATION
-from plots import plot_courbes, plot_gantt
+#from plots import plot_courbes, plot_gantt
 from scripts.data_loader import load_simwell_data_exl
 from scripts.solve import SimwellScheduler
 from scripts.batching_2lines import SimwellScheduler2Lines
@@ -36,8 +36,8 @@ def main():
         #scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
         metrics = scheduler.process_scheduling(df_orders)
         all_metrics[strategy] = metrics
-        plot_gantt(scheduler, strategy)                     
-        plot_courbes(scheduler, strategy) 
+        #plot_gantt(scheduler, strategy)                     
+        #plot_courbes(scheduler, strategy) 
 
         # Sauvegarde solution et métriques par stratégie
         df_resultat = scheduler.solution()
