@@ -4,7 +4,7 @@ from collections import Counter
 
 
 class SimwellScheduler:
-    def __init__(self, df_orders, start_date, rotations, strategy="edd"):
+    def __init__(self, df_orders, start_date, rotations, strategy="EDD"):
         self.df_initial = df_orders
         self.rotations = rotations
         self.setup_time = 12
@@ -26,8 +26,8 @@ class SimwellScheduler:
 
         # Les approches
         strategies = {
-            "edd":       self.edd,
-            "batching":  self.batching_edd,
+            "EDD":       self.EDD,
+            "Batching-EDD-1L":  self.batching_EDD_1l,
         }
         if strategy not in strategies:
             raise ValueError(f"Stratégie inconnue: {strategy}. Choisir parmi {list(strategies.keys())}")
@@ -47,7 +47,7 @@ class SimwellScheduler:
             "Date de fin totale (j)": self.current_time,
             "Nombre de commandes traitées": nb_commandes,
             "Retard total (j)": round(self.total_delay_days, 2),
-            "Date de fin minimale (j)": round(borne_inf_jours, 2),
+            "Borne inferieure (j)": round(borne_inf_jours, 2),
             "Nombre de setups effectués": self.total_setup_hours // self.setup_time,
             "Temps de setup total (h)": self.total_setup_hours,
             "Nombre de maintenances": self.maintenance_count,
@@ -127,7 +127,7 @@ class SimwellScheduler:
         })
     
     # EDD
-    def edd(self, pending_orders):
+    def EDD(self, pending_orders):
         while True:
             allowed = list(self.rotations) if self.last_family is None else self.rotations.get(self.last_family, [])
             confirmed = [o for o in pending_orders if o['Order Confirmed Date'] <= self.current_time]
@@ -145,7 +145,7 @@ class SimwellScheduler:
             self._advance_time(min(future, key=lambda x: x['Order Confirmed Date'])['Order Confirmed Date'])
 
     # Batching + EDD
-    def batching_edd(self, pending_orders):
+    def batching_EDD_1l(self, pending_orders):
         while True:
             if not pending_orders:
                 return None

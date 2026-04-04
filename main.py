@@ -1,8 +1,9 @@
 import pandas as pd
 from datetime import datetime
+import copy
 
 from config import ROTATION
-#from plots import plot_courbes, plot_gantt
+from plots import plot_courbes, plot_courbes_alpha, plot_gantt, plot_courbes_all, ALPHA_COLORS
 from scripts.data_loader import load_simwell_data_exl
 from scripts.solve import SimwellScheduler
 from scripts.batching_2lines import SimwellScheduler2Lines
@@ -24,26 +25,45 @@ def main():
     
     print("--- Lancement de l'ordonnancement ---")
     # Lancement des approches
-    strategies = ["edd", "batching", "batching_2lines"]
+    strategies = ["EDD", "Batching-EDD-1L", "Batching-EDD-2PL"]
     all_metrics = {}
+    schedulers_dict = {}
+    alphas = [0.2, 0.5, 0.8]
+    schedulers_alpha = {}
     
     for strategy in strategies:
         print(f"\n--- Lancement : {strategy.upper()} ---")
-        if strategy == "batching_2lines":
-            scheduler = SimwellScheduler2Lines(df_orders, start_date, ROTATION)
+        df_orders_copy = df_orders.copy()
+        if strategy == "Batching-EDD-2PL":
+            scheduler = SimwellScheduler2Lines(df_orders_copy, start_date, ROTATION, alpha=0.8)
+            label = 'Batching-EDD-2PL'
+        elif strategy == "EDD":
+            scheduler = SimwellScheduler(df_orders_copy, start_date, ROTATION, strategy=strategy)
+            label = 'EDD'
         else:
-            scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
-        #scheduler = SimwellScheduler(df_orders, start_date, ROTATION, strategy=strategy)
-        metrics = scheduler.process_scheduling(df_orders)
+            scheduler = SimwellScheduler(df_orders_copy, start_date, ROTATION, strategy="Batching-EDD-1L")
+            label = 'Batching-EDD-1L'
+        metrics = scheduler.process_scheduling(df_orders_copy)
         all_metrics[strategy] = metrics
         #plot_gantt(scheduler, strategy)                     
         #plot_courbes(scheduler, strategy) 
+        schedulers_dict[label] = scheduler
+        #plot_courbes_all(schedulers_dict, title="Comparaison des stratégies")
 
         # Sauvegarde solution et métriques par stratégie
         df_resultat = scheduler.solution()
         df_resultat.to_csv(f"results/results_{strategy}.csv", index=False)
-        print(f"Solution sauvegardée : results/results_{strategy}.csv")
+        #print(f"Solution sauvegardée : results/results_{strategy}.csv")
+    
 
+    for alpha in alphas:
+        df_orders_copy = df_orders.copy()
+        scheduler = SimwellScheduler2Lines(df_orders_copy, start_date, ROTATION, alpha=alpha)
+        scheduler.process_scheduling(df_orders_copy)
+        label = f'Batching-EDD-2PL (α={alpha})'
+        schedulers_alpha[label] = scheduler
+    plot_courbes_alpha(schedulers_alpha)
+    
     # Sauvegarder les métriques ensemble
     df_all_metrics = pd.DataFrame(all_metrics).T
     df_all_metrics.to_csv("results/metrics_all.csv")
