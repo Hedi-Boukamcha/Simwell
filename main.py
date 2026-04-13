@@ -25,7 +25,7 @@ def main():
     
     print("--- Lancement de l'ordonnancement ---")
     # Lancement des approches
-    strategies = ["EDD", "Batching-EDD-1L", "Batching-EDD-2PL"]
+    strategies = ["EDD", "Batching-EDD-1L", "Batching-EDD-2PL (α=0.5)"]
     all_metrics = {}
     schedulers_dict = {}
     alphas = [0.2, 0.5, 0.8]
@@ -34,9 +34,9 @@ def main():
     for strategy in strategies:
         print(f"\n--- Lancement : {strategy.upper()} ---")
         df_orders_copy = df_orders.copy()
-        if strategy == "Batching-EDD-2PL":
-            scheduler = SimwellScheduler2Lines(df_orders_copy, start_date, ROTATION, alpha=0.8)
-            label = 'Batching-EDD-2PL'
+        if strategy == "Batching-EDD-2PL (α=0.5)":
+            scheduler = SimwellScheduler2Lines(df_orders_copy, start_date, ROTATION, alpha=0.5) #ici on change 0.2 ou 0.5 ou bien 0.8
+            label = 'Batching-EDD-2PL (α=0.5)'
         elif strategy == "EDD":
             scheduler = SimwellScheduler(df_orders_copy, start_date, ROTATION, strategy=strategy)
             label = 'EDD'
@@ -44,11 +44,12 @@ def main():
             scheduler = SimwellScheduler(df_orders_copy, start_date, ROTATION, strategy="Batching-EDD-1L")
             label = 'Batching-EDD-1L'
         metrics = scheduler.process_scheduling(df_orders_copy)
+
         all_metrics[strategy] = metrics
         #plot_gantt(scheduler, strategy)                     
-        #plot_courbes(scheduler, strategy) 
+        plot_courbes(scheduler, strategy) 
         schedulers_dict[label] = scheduler
-        #plot_courbes_all(schedulers_dict, title="Comparaison des stratégies")
+        plot_courbes_all(schedulers_dict, title="Comparaison des stratégies")
 
         # Sauvegarde solution et métriques par stratégie
         df_resultat = scheduler.solution()
@@ -82,6 +83,7 @@ def main():
         ("Nb maintenances",                "Nombre de maintenances"),
         ("Nb commandes traitées",          "Nombre de commandes traitées"),
         ("Nb commandes en retard",         "Nb commandes en retard"),
+        ("Retard maximum (j)", "Retard maximum (j)"),
         ("Cmax (j)",                       "Cmax (j)"),
         ("GAP (%)",                       "GAP (%)")
     ]

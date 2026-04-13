@@ -4,7 +4,7 @@ import matplotlib.patches as mpatches
 STRATEGY_COLORS = {
     'EDD':      {'main': '#4C72B0', 'second': '#4C72B0'},
     'Batching-EDD-1L': {'main': '#DD8452', 'second': '#DD8452'},
-    'Batching-EDD-2PL': {'main': '#DD1452', 'second': '#DD1452'}
+    'Batching-EDD-2PL (α=0.5)': {'main': '#DD1452', 'second': '#DD1452'}
 }
 
 ALPHA_COLORS = {
@@ -48,7 +48,6 @@ def plot_courbes(scheduler, title="Courbes", colors=None):
     df = scheduler.solution()
     
     color = STRATEGY_COLORS.get(title, {'main': 'steelblue'})['main']
-
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
     fig.suptitle(f"Courbes — {title}", fontsize=14, fontweight='bold')
@@ -154,11 +153,18 @@ def plot_courbes_all(schedulers_dict, title="Courbes comparatives"):
     # ── Légende sur chaque sous-graphe ───────────────────────────
     for ax in axes.flat:
         ax.legend(loc='upper left', fontsize=9)
+    
+    plt.annotate(f'Max: 133.62j (ID=417)', 
+             xy=(981, 133.62), 
+             xytext=(900, 140),
+             arrowprops=dict(arrowstyle='->'),
+             fontsize=9)
 
     plt.tight_layout()
     plt.savefig(f"results/courbes_comparatives.png", dpi=150, bbox_inches='tight')
     print("Courbes comparatives sauvegardées : results/courbes_comparatives.png")
     plt.close()
+
 
 def plot_courbes_alpha(schedulers_alpha, title="Analyse de sensibilité — Alpha"):
 

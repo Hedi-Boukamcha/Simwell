@@ -23,6 +23,8 @@ class SimwellScheduler:
         self.late_orders_count = 0
         self.cmax = 0
         self.gap = 0
+        self.max_delay_days = 0
+
 
         # Les approches
         strategies = {
@@ -43,6 +45,7 @@ class SimwellScheduler:
         retard_moyen = round(self.total_delay_days / self.late_orders_count, 2) if nb_commandes > 0 else 0
         borne_inf_jours = self.calculate_lower_bound()
         self.gap = round((self.cmax - borne_inf_jours) / borne_inf_jours * 100, 1) if borne_inf_jours > 0 else 0
+
         return {
             "Date de fin totale (j)": self.current_time,
             "Nombre de commandes traitées": nb_commandes,
@@ -53,6 +56,7 @@ class SimwellScheduler:
             "Nombre de maintenances": self.maintenance_count,
             "Retard Moyenne par commande (j)": retard_moyen,
             "Nb commandes en retard": self.late_orders_count,
+            "Retard maximum (j)": round(self.max_delay_days, 2),
             "Cmax (j)": round(self.cmax, 2),
             "GAP (%)": round(self.gap, 2),
         }
@@ -112,6 +116,7 @@ class SimwellScheduler:
         end_prod = self.current_time
         delay = max(0, (end_prod - order['Expected Delivery Date']).total_seconds() / 86400)
         self.cmax = (self.current_time - datetime(2025, 1, 7, 0, 0)).total_seconds() / 86400
+        self.max_delay_days = max(self.max_delay_days, delay)
         
         self.total_delay_days += delay
         if delay > 0:

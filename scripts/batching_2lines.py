@@ -19,16 +19,18 @@ class SimwellScheduler2Lines(SimwellScheduler):
     """
 
     def __init__(self, df_orders, start_date, rotations, alpha):
-        # Initialise toutes les variables communes via le parent
+        # Initialise toutes les variables communes via le init parent
         super().__init__(df_orders, start_date, rotations, strategy="EDD")
 
-        # --- Ligne 1 : réutilise les variables du parent ---
+        #  Ligne 1 : réutilise les variables du parent 
         self.current_time_1          = self.current_time
         self.last_family_1           = self.last_family
         self.last_order_id_1         = self.last_order_id
         self.last_maintenance_date_1 = self.last_maintenance_date
+        self.max_delay_days = 0
 
-        # --- Ligne 2 : variables dédiées ---
+
+        # Ligne 2 : variables dédiées
         self.current_time_2          = start_date + timedelta(hours=12)
         self.last_family_2           = None
         self.last_order_id_2         = None
@@ -46,9 +48,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
 
 
 
- #------------------------------------------------------------------
     # Transit fixe : trouver la prochaine étape du chemin A→H→F
-    # ------------------------------------------------------------------
  
     def _next_transit_step(self, last_family, pending_orders, current_time, line):
         """
@@ -79,13 +79,13 @@ class SimwellScheduler2Lines(SimwellScheduler):
             if urgent_a:
                 return 'A'  # rester sur A pour finir les urgentes"""
  
-            # Plus de P ni de A urgentes → avancer vers H
+            # Plus de P ni de A urgentes -> avancer vers H
             if 'H' in pending_families:
                 return 'H'
             return 'F' if 'F' in pending_families else self._any_available(pending_orders)
  
         elif last_family == 'P':
-            # Après P → retour A obligatoire
+            # Après P -> retour A obligatoire
             if 'A' in pending_families:
                 return 'A'
             return 'H' if 'H' in pending_families else 'F'
@@ -94,15 +94,11 @@ class SimwellScheduler2Lines(SimwellScheduler):
             return 'F' if 'F' in pending_families else self._any_available(pending_orders)
  
         elif last_family == 'F':
-            # Après F → forcer VMENC (famille la plus représentée + EDD)
+            # Après F -> forcer VMENC (famille la plus représentée + EDD)
             vmenc_orders = [o for o in pending_orders if o['Family'] in VMENC]
             if vmenc_orders:
                 family_counts = Counter(o['Family'] for o in vmenc_orders)
-                best = max(family_counts, key=lambda f: (
-                    family_counts[f],
-                    -min(o['Expected Delivery Date'].timestamp()
-                         for o in vmenc_orders if o['Family'] == f)
-                ))
+                best = max(family_counts, key=lambda f: (family_counts[f], -min(o['Expected Delivery Date'].timestamp() for o in vmenc_orders if o['Family'] == f)))
                 return best
             if 'H' in pending_families:
                 return 'H'
@@ -116,7 +112,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
             return None
  
         else:
-            # Famille quelconque (V/M/E/N/C) → retour vers A
+            # Famille quelconque (V/M/E/N/C) -> retour vers A
             return 'A' if 'A' in pending_families else 'H'
  
     def _any_available(self, pending_orders):
@@ -128,12 +124,9 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 return f
         return next(iter(families), None)
 
-    # ------------------------------------------------------------------
-    # Overrides des helpers pour prendre `line` en paramètre
-    # ------------------------------------------------------------------
+    # Meme des helpers pour prendre `line` en paramètre
 
     def _advance_time(self, line, new_date=None):
-        # Compatibilité avec l'appel parent _advance_time(new_date)
         if new_date is None:
             new_date, line = line, 1
 
@@ -158,7 +151,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
         path = self.find_shortest_path(from_family, to_family)
 
         if not path:
-            return 1  # fallback (sécurité)
+            return 1
 
         # nombre de transitions = nombre de setups
         return len(path) - 1
@@ -171,7 +164,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
             last_family = self.last_produced_family_2
             current_time = self.current_time_2
 
-        # 🔥 calcul du nombre de setups nécessaires
+        # calcul du nombre de setups nécessaires
         n_setups = self.compute_setup_steps(last_family, new_family)
 
         if n_setups > 0:
@@ -205,9 +198,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 self.last_maintenance_date_2 = self.current_time_2
                 self.maintenance_count += 1
 
-    # ------------------------------------------------------------------
-    # Override de metrics et calculate_lower_bound
-    # ------------------------------------------------------------------
+    # Meme metrics et calculate_lower_bound
 
     def metrics(self):
         # Synchronise current_time du parent avec le max des 2 lignes
@@ -238,9 +229,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
  
         return round(lb_cmax_days, 2)
 
-    # ------------------------------------------------------------------
-    # Override de process_scheduling pour gérer 2 lignes
-    # ------------------------------------------------------------------
+    # Meme process_scheduling pour gérer 2 lignes
     
     def _select_line(self, family):
         """
@@ -280,7 +269,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
     def process_scheduling(self, orders_df):
         pending_orders = orders_df.to_dict('records')
 
-        # 🔥 Batch en cours par ligne
+        # Batch en cours par ligne
         self.current_batch_family_1 = None
         self.current_batch_family_2 = None
 
@@ -288,9 +277,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
 
             now = min(self.current_time_1, self.current_time_2)
 
-            # ===========================================================
             # PRIORITÉ 0 — Continuer batch MAIS PAS BLOQUER L'AUTRE LIGNE
-            # ===========================================================
 
             l1_batch = self.current_batch_family_1
             l2_batch = self.current_batch_family_2
@@ -309,13 +296,13 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 and o["Order Confirmed Date"] <= self.current_time_2
             ]
 
-            # 🔥 CAS 1 : les deux lignes ont un batch actif
+            # CAS 1 : les deux lignes ont un batch actif
             if l1_ready and l2_ready:
                 line = 1 if self.current_time_1 <= self.current_time_2 else 2
 
-            # 🔥 CAS 2 : une seule ligne a un batch actif
+            # CAS 2 : une seule ligne a un batch actif
             elif l1_ready:
-                # 👉 vérifier si l'autre ligne peut démarrer autre chose
+                # vérifier si l'autre ligne peut démarrer autre chose
                 other_available = [
                     o for o in pending_orders
                     if o["Order Confirmed Date"] <= self.current_time_2
@@ -323,7 +310,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 ]
 
                 if other_available:
-                    line = 2  # 🔥 on utilise la 2ème ligne !
+                    line = 2  # on utilise la 2ème ligne 
                 else:
                     line = 1
 
@@ -340,11 +327,9 @@ class SimwellScheduler2Lines(SimwellScheduler):
                     line = 2
 
             else:
-                line = None  # → passer à logique normale
+                line = None  # -> passer à logique normale
 
-            # ===========================================================
-            # 🔥 SINON → logique normale
-            # ===========================================================
+            # SINON -> logique normale
             if line is None:
 
                 confirmed = [o for o in pending_orders if o["Order Confirmed Date"] <= now]
@@ -364,20 +349,16 @@ class SimwellScheduler2Lines(SimwellScheduler):
                     elif l1_family == family and l2_family == family:
                         line = 1 if self.current_time_1 <= self.current_time_2 else 2
                     else:
-                        # 🔥 nouvelle famille → UNE seule ligne
+                        # nouvelle famille → UNE seule ligne
                         line = 1 if self.current_time_1 <= self.current_time_2 else 2
 
                 else:
                     line = 1 if self.current_time_1 <= self.current_time_2 else 2
 
-            # ===========================================================
             # Maintenance
-            # ===========================================================
             self._check_maintenance(line)
 
-            # ===========================================================
             # Sélection de la commande
-            # ===========================================================
             idx = self._find_next_order(pending_orders, line)
 
             if idx is None:
@@ -385,9 +366,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
 
             order = pending_orders.pop(idx)
 
-            # ===========================================================
-            # 🔥 MAJ batch
-            # ===========================================================
+            # MAJ batch
             if line == 1:
                 if self.current_batch_family_1 is None:
                     self.current_batch_family_1 = order["Family"]
@@ -395,19 +374,13 @@ class SimwellScheduler2Lines(SimwellScheduler):
                 if self.current_batch_family_2 is None:
                     self.current_batch_family_2 = order["Family"]
 
-            # ===========================================================
             # Setup
-            # ===========================================================
             self._apply_setup(line, order["Family"])
 
-            # ===========================================================
             # Production
-            # ===========================================================
             self._produce(order, line)
 
-            # ===========================================================
-            # 🔥 FIN DE BATCH
-            # ===========================================================
+            # FIN DE BATCH
             if line == 1:
                 remaining = [o for o in pending_orders if o["Family"] == self.current_batch_family_1]
                 if not remaining:
@@ -437,6 +410,8 @@ class SimwellScheduler2Lines(SimwellScheduler):
 
         end_prod = current_time + timedelta(hours=duration_hours)
         delay          = max(0, (end_prod - order['Expected Delivery Date']).total_seconds() / 86400)
+        self.max_delay_days = max(self.max_delay_days, delay)
+
 
         if line == 1:
             self.current_time_1  = end_prod
@@ -465,6 +440,36 @@ class SimwellScheduler2Lines(SimwellScheduler):
             'Delay_Days': round(delay, 2),
         })
 
+
+    def find_shortest_path(self, start, target):
+        if start == target:
+            return [start]
+        visited = set()
+        queue = deque([(start, [start])])
+        while queue:
+            current, path = queue.popleft()
+            for neighbor in self.rotations.get(current, []):
+                if neighbor == target:
+                    return path + [neighbor]
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [neighbor]))
+        return None
+
+
+    def get_next_family_via_path(self, last_family, target_family):
+        """
+        Retourne la prochaine famille à prendre pour aller vers target_family
+        en respectant la rotation (sans produire les intermédiaires).
+        """
+        if last_family is None:
+            return target_family
+        path = self.find_shortest_path(last_family, target_family)
+        if path and len(path) > 1:
+            return path[1]
+        return target_family
+
+
     # ------------------------------------------------------------------
     # Heuristique : Batching 2 Lines
     # ------------------------------------------------------------------
@@ -482,7 +487,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
             ready     = [o for o in confirmed if o['Family'] in allowed]
  
             if ready:
-                # ── Règle 1 : après F → forcer VMENC (batch + EDD) ──
+                # Règle 1 : après F -> forcer VMENC (batch + EDD)
                 if last_family == 'F':
                     vmenc_ready = [o for o in ready if o['Family'] in VMENC]
                     if vmenc_ready:
@@ -490,9 +495,9 @@ class SimwellScheduler2Lines(SimwellScheduler):
                         vmenc_ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
                         target_id = vmenc_ready[0]['Order ID']
                         return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
-                    # Aucune VMENC confirmée → logique normale
+                    # Aucune VMENC confirmée -> logique normale
  
-                # ── Règle 2 : sur A → vérifier P urgent ──
+                # Règle 2 : sur A -> vérifier P urgent 
                 if last_family == 'A':
                     p_ready = [o for o in ready if o['Family'] == 'P']
                     if p_ready:
@@ -500,24 +505,24 @@ class SimwellScheduler2Lines(SimwellScheduler):
                         target_id = p_ready[0]['Order ID']
                         return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
  
-                # ── Règle 3 : continuer même famille (batch, pas de setup) ──
+                # continuer même famille (batch, pas de setup) 
                 same_family = [o for o in ready if o['Family'] == last_family]
                 if same_family:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
                     target_id = same_family[0]['Order ID']
                     return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
  
-                # ── Règle 4 : famille la plus représentée + EDD ──
+                #  famille la plus représentée + EDD 
                 family_counts = Counter(o['Family'] for o in ready)
                 ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
                 target_id = ready[0]['Order ID']
                 return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
  
-            # ── Aucune commande prête dans les familles autorisées ──
+            # Aucune commande prête dans les familles autorisées
             future = [o for o in pending_orders if o['Family'] in allowed]
  
             if not future:
-                # ── Coordination inter-lignes : déblocage rotation ──
+                #  Coordination inter-lignes : déblocage rotation
                 # Comparer les familles des 2 lignes pour choisir
                 # laquelle peut débloquer vers une famille disponible
                 other_lf       = self.last_produced_family_2 if line == 1 else self.last_produced_family_1
@@ -536,8 +541,8 @@ class SimwellScheduler2Lines(SimwellScheduler):
  
                 elif other_reach and not self_reach:
                     # Seule l'autre ligne peut débloquer
-                    # → les deux lignes autorisent ? → celle qui finit le plus tôt
-                    # → sinon attendre que l'autre finisse et réessayer
+                    # les deux lignes autorisent ? → celle qui finit le plus tôt
+                    # sinon attendre que l'autre finisse et réessayer
                     if other_time > current_time:
                         self._advance_time(line, other_time)
                         current_time = self.current_time_1 if line == 1 else self.current_time_2
@@ -546,7 +551,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
  
                 else:
                     # Aucune ligne ne peut débloquer → transit fixe forcé
-                    #next_step = self._next_transit_step(last_family, pending_orders, current_time, line)
+                    # next_step = self._next_transit_step(last_family, pending_orders, current_time, line)
                     next_step = self.get_next_family_via_path(last_family, target_family)
  
                 if next_step is None:
@@ -587,29 +592,5 @@ class SimwellScheduler2Lines(SimwellScheduler):
             self._advance_time(line, next_confirm)
             current_time = self.current_time_1 if line == 1 else self.current_time_2
     
-    def find_shortest_path(self, start, target):
-        if start == target:
-            return [start]
-        visited = set()
-        queue = deque([(start, [start])])
-        while queue:
-            current, path = queue.popleft()
-            for neighbor in self.rotations.get(current, []):
-                if neighbor == target:
-                    return path + [neighbor]
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, path + [neighbor]))
-        return None
+
     
-    def get_next_family_via_path(self, last_family, target_family):
-        """
-        Retourne la prochaine famille à prendre pour aller vers target_family
-        en respectant la rotation (sans produire les intermédiaires).
-        """
-        if last_family is None:
-            return target_family
-        path = self.find_shortest_path(last_family, target_family)
-        if path and len(path) > 1:
-            return path[1]  # prochaine étape seulement
-        return target_family
