@@ -215,8 +215,8 @@ class SimwellScheduler2Lines(SimwellScheduler):
         # Ligne 2 plus rapide grâce à alpha
         effective_l2 = total_prod_hours / 2 * self.alpha
         effective_l1 = total_prod_hours / 2
-        lb_hours     = max(effective_l1, effective_l2) + min_setup_hours
- 
+        lb_hours = total_prod_hours * (1 + self.alpha) / 2 + min_setup_hours
+
         earliest_start = df['Order Confirmed Date'].min()
         lb_end         = earliest_start + timedelta(hours=lb_hours)
         lb_cmax_days   = (lb_end - earliest_start).total_seconds() / 86400
@@ -468,7 +468,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
         if path and len(path) > 1:
             return path[1]
         return target_family
-
+    
 
     # ------------------------------------------------------------------
     # Heuristique : Batching 2 Lines
@@ -487,7 +487,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
             ready     = [o for o in confirmed if o['Family'] in allowed]
  
             if ready:
-                # Règle 1 : après F -> forcer VMENC (batch + EDD)
+                """# Règle 1 : après F -> forcer VMENC (batch + EDD)
                 if last_family == 'F':
                     vmenc_ready = [o for o in ready if o['Family'] in VMENC]
                     if vmenc_ready:
@@ -495,7 +495,36 @@ class SimwellScheduler2Lines(SimwellScheduler):
                         vmenc_ready.sort(key=lambda x: (-family_counts[x['Family']], x['Expected Delivery Date']))
                         target_id = vmenc_ready[0]['Order ID']
                         return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
-                    # Aucune VMENC confirmée -> logique normale
+                    # Aucune VMENC confirmée -> logique normale"""
+                if last_family == 'F':
+                    vmenc_ready = [o for o in ready if o['Family'] in VMENC]
+                    if vmenc_ready:
+                        family_counts = Counter(o['Family'] for o in vmenc_ready)
+                        
+                        # Normalisation
+                        max_count  = max(family_counts.values())
+                        min_due    = min(o['Expected Delivery Date'] for o in vmenc_ready)
+                        max_due    = max(o['Expected Delivery Date'] for o in vmenc_ready)
+                        
+                        w1, w2 = 0.5, 0.5  # poids à ajuster
+                        
+                        def score(family):
+                            count    = family_counts[family]
+                            due      = min(o['Expected Delivery Date'] 
+                                        for o in vmenc_ready if o['Family'] == family)
+                            # Normaliser entre 0 et 1
+                            norm_count = count / max_count if max_count > 0 else 0
+                            norm_due   = ((max_due - due).days / (max_due - min_due).days 
+                                        if max_due != min_due else 0)
+                            return w1 * norm_count + w2 * norm_due
+                        
+                        # Choisir la famille avec le meilleur score
+                        best_family = max(family_counts.keys(), key=score)
+                        vmenc_ready = [o for o in vmenc_ready if o['Family'] == best_family]
+                        vmenc_ready.sort(key=lambda x: x['Expected Delivery Date'])
+                        target_id = vmenc_ready[0]['Order ID']
+                        return next(i for i, o in enumerate(pending_orders) 
+                                if o['Order ID'] == target_id)
  
                 # Règle 2 : sur A -> vérifier P urgent 
                 if last_family == 'A':
@@ -505,7 +534,7 @@ class SimwellScheduler2Lines(SimwellScheduler):
                         target_id = p_ready[0]['Order ID']
                         return next(i for i, o in enumerate(pending_orders) if o['Order ID'] == target_id)
  
-                # continuer même famille (batch, pas de setup) 
+                # Regle 3:continuer même famille (batch, pas de setup) 
                 same_family = [o for o in ready if o['Family'] == last_family]
                 if same_family:
                     same_family.sort(key=lambda x: x['Expected Delivery Date'])
